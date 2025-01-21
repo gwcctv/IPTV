@@ -1,0 +1,70 @@
+name: Update IPTV
+
+on:
+  schedule:
+    - cron: '*/3 * * * *' # Run every 3 minutes
+
+jobs:
+  update_iptv:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: GetTime
+        id: date
+        run: echo "::set-output name=date::$(date +'%Y-%m-%d %H:%M:%S CST')"
+
+      - name: Update CCTV source
+        run: |
+          rm -f CCTV.m3u && wget https://raw.githubusercontent.com/fanmingming/live/main/tv/m3u/ipv6.m3u -O CCTV.m3u || true
+          sed -i -n '/央视/,+1p' CCTV.m3u
+          sed -i '1i #EXTM3U' CCTV.m3u
+          sed -i '/^\s*$/d' CCTV.m3u
+
+      - name: Update CNTV source
+        run: |
+          rm -f CNTV.m3u && wget https://raw.githubusercontent.com/fanmingming/live/main/tv/m3u/ipv6.m3u -O CNTV.m3u || true
+          sed -i '/央视/,+1d' CNTV.m3u
+          sed -i '/^\s*$/d' CNTV.m3u
+
+      - name: Update Adult source
+        run: |
+          rm -f Adult.m3u && wget http://adultiptv.net/chs.m3u -O Adult.m3u || true
+          sed -i 's/XXX/成人/' Adult.m3u
+          sed -i 's/AdultIPTV.net //g' Adult.m3u
+          wget https://raw.githubusercontent.com/YanG-1989/m3u/main/Adult.m3u -O AdultVideo.txt || true
+          sed -i -n '/日本/,+1p' AdultVideo.txt
+          sed -i 's/日本/成人/' AdultVideo.txt
+          echo '' >> Adult.m3u && cat AdultVideo.txt >> Adult.m3u
+          rm -f AdultVideo.txt
+          sed -i '/^\s*$/d' Adult.m3u
+
+      - name: Combine sources
+        run: |
+          rm -f IPTV.m3u && touch IPTV.m3u
+          cat CCTV.m3u >> IPTV.m3u
+          cat CNTV.m3u >> IPTV.m3u
+          sed -i '/#EXTM3U/d' IPTV.m3u
+          sed -i '1i #EXTM3U' IPTV.m3u
+          sed -i '/^\s*$/d' IPTV.m3u
+
+      - name: Update EPG
+        run: wget https://epg.112114.xyz/pp.xml -O EPG.xml
+
+      - name: Update README
+        run: echo "Auto Update IPTV in ${{ steps.date.outputs.date }}" > README.md
+
+      - name: Clean up
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git checkout --orphan latest_branch
+          git add -A
+          git commit -am "${{ steps.date.outputs.date }}"
+          git branch -D Files
+          git branch -m Files
+
+      - name: Push changes
+        run: git push -f origin Files
